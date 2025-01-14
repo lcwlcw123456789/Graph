@@ -1,9 +1,13 @@
 <template>
-  <div @click="toggleChart" class="chart-container">
-    <div v-if="isCollapsed" class="collapsed-icon">
-      📊 <!-- 收起时显示的小图标 -->
+  <div>
+    <!-- 上传按钮 -->
+    <input type="file" @change="handleFileUpload" accept=".xlsx, .xls" />
+    <div @click="toggleChart" class="chart-container">
+      <div v-if="isCollapsed" class="collapsed-icon">📊</div>
+      <svg v-else ref="chart" :width="width" :height="height"></svg>
     </div>
-    <svg v-else ref="chart" :width="width" :height="height"></svg>
+    <!-- 导出按钮 -->
+    <button @click="exportChart">导出图表</button>
   </div>
 </template>
 
@@ -35,6 +39,22 @@ export default {
     this.createTooltip();
   },
   methods: {
+      handleFileUpload(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const workbook = XLSX.read(e.target.result, { type: "binary" });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+        // 假设第一行为 x 轴，第二行为数据
+        this.data = jsonData[1];
+        this.xLabels = jsonData[0];
+        this.drawChart();
+      };
+      reader.readAsBinaryString(file);
+    },
     createTooltip() {
       // 动态创建 tooltip 元素
       this.tooltip = d3
@@ -142,6 +162,26 @@ export default {
         .on("mouseout", () => {
           this.tooltip.style("opacity", 0);
         });
+    },
+    exportChart() {
+      const svg = this.$refs.chart;
+      const svgData = new XMLSerializer().serializeToString(svg);
+
+      // 转换为 PNG 图像
+      const canvas = document.createElement("canvas");
+      canvas.width = this.width;
+      canvas.height = this.height;
+      const ctx = canvas.getContext("2d");
+
+      const img = new Image();
+      img.onload = () => {
+        ctx.drawImage(img, 0, 0);
+        const a = document.createElement("a");
+        a.href = canvas.toDataURL("image/png");
+        a.download = "chart.png";
+        a.click();
+      };
+      img.src = `data:image/svg+xml;base64,${btoa(svgData)}`;
     },
   },
 };
