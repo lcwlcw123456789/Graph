@@ -9,6 +9,7 @@
 
 <script>
 import * as d3 from "d3";
+import * as XLSX from "xlsx"; // 导入 xlsx 库
 
 export default {
   name: "BarChart",
@@ -25,11 +26,12 @@ export default {
   data() {
     return {
       isCollapsed: false, // 图表状态：展开或收起
-      data: [10, 20, 30, 40, 50], // 样本数据
+      data: [], // 第二行数据
+      labels: [], // 第一行标签
     };
   },
   mounted() {
-    this.drawChart();
+    this.loadDataFromExcel(); // 从 Excel 文件加载数据
     this.createTooltip();
   },
   methods: {
@@ -48,7 +50,6 @@ export default {
         .style("pointer-events", "none")
         .style("opacity", 0); // 默认隐藏
     },
-    // 切换图表状态
     toggleChart() {
       this.isCollapsed = !this.isCollapsed;
 
@@ -56,6 +57,33 @@ export default {
       if (!this.isCollapsed) {
         this.$nextTick(() => this.drawChart());
       }
+    },
+    loadDataFromExcel() {
+      const fileName = "./data.xlsx"; // Excel 文件路径
+      fetch(fileName)
+        .then((response) => response.arrayBuffer())
+        .then((buffer) => {
+          const workbook = XLSX.read(buffer, { type: "array" });
+          const sheetName = workbook.SheetNames[0];
+          const sheet = workbook.Sheets[sheetName];
+          const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 }); // 转为二维数组
+
+          // 设置 x轴标签（第一行）和 数据（第二行）
+          this.labels = jsonData[0];
+          this.data = jsonData[1];
+
+          // 确保数据格式一致
+          if (this.labels.length !== this.data.length) {
+            console.error("Error: Labels and data length do not match.");
+            return;
+          }
+
+          // 绘制图表
+          this.drawChart();
+        })
+        .catch((error) => {
+          console.error("Error loading Excel file:", error);
+        });
     },
     drawChart() {
       const svg = d3.select(this.$refs.chart);
@@ -67,7 +95,7 @@ export default {
 
       const x = d3
         .scaleBand()
-        .domain(this.data.map((_, i) => i))
+        .domain(this.labels)
         .range([0, chartWidth])
         .padding(0.1);
 
@@ -84,18 +112,17 @@ export default {
       // X Axis
       g.append("g")
         .attr("transform", `translate(0,${chartHeight})`)
-        .call(d3.axisBottom(x).tickFormat((d) => `Label ${d + 1}`));
+        .call(d3.axisBottom(x));
 
       // Y Axis
       g.append("g").call(d3.axisLeft(y));
 
       // Bars
-      const bars = g
-        .selectAll(".bar")
+      g.selectAll(".bar")
         .data(this.data)
         .join("rect")
         .attr("class", "bar")
-        .attr("x", (_, i) => x(i))
+        .attr("x", (_, i) => x(this.labels[i]))
         .attr("y", (d) => y(d))
         .attr("width", x.bandwidth())
         .attr("height", (d) => chartHeight - y(d))
@@ -115,7 +142,6 @@ export default {
         .on("mouseout", () => {
           this.tooltip.style("opacity", 0);
         });
-
     },
   },
 };
